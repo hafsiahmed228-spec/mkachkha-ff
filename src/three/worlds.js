@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { CITY_MAPS, initCities } from './cities.js';
 function shade(hex,amt){ // amt -1..1
   let c=hex.replace('#',''); if(c.length===3)c=c.split('').map(x=>x+x).join('');
   let n=parseInt(c,16), r=n>>16, g=(n>>8)&255, b=n&255;
@@ -219,6 +220,9 @@ const MAPS={
   plage:{name:'البحر',emoji:'🏖️',build:buildPlage,bounds:{x:17,zMin:-9.5,zMax:16},spawnZ:4},
   souk:{name:'السوق',emoji:'🛍️',build:buildSouk,bounds:{x:2.3,z:19},spawnZ:0},
 };
+const glowMats=[];
+initCities({ PM, mk, SPH, BOX, canvasTex, stripeTex, V, cyl, rbox, colliders, lamp, palm, emitter: (...a)=>emitter(...a), glowMats, setSea:m=>{ sea=m; }, addFlag:fl=>{ fl.userData.base=fl.geometry.attributes.position.array.slice(); fl.userData.ph=Math.random()*6; flags.push(fl); } });
+Object.assign(MAPS, CITY_MAPS);
 let worldGroup=null, mapId='sidi', night=false;
 const stars=new THREE.Points((()=>{ const g=new THREE.BufferGeometry(), a=[]; for(let i=0;i<700;i++){ const t=Math.random()*Math.PI*2, u=Math.random()*0.9+0.08; const r=80; a.push(Math.cos(t)*Math.sqrt(1-u*u)*r,u*r,Math.sin(t)*Math.sqrt(1-u*u)*r); } g.setAttribute('position',new THREE.Float32BufferAttribute(a,3)); return g; })(),
   new THREE.PointsMaterial({color:0xffffff,size:2,sizeAttenuation:false,fog:false}));
@@ -229,17 +233,18 @@ function clampBounds(p){ const b=MAPS[mapId].bounds;
   if(b.z){ p.z=Math.max(-b.z,Math.min(b.z,p.z)); }
   if(b.zMin!=null){ p.z=Math.max(b.zMin,Math.min(b.zMax,p.z)); } }
 function applyLighting(){
-  const mp=MAPS[mapId]; const key=mp.profile||(night?(mapId==='stade'?'stadeNight':'night'):'day'); const pf=PROFILES[key];
+  const mp=MAPS[mapId]; const key=mp.profile||(night?(mapId==='stade'?'stadeNight':'night'):(mp.day||'day')); const pf=PROFILES[key]; const city=!!CITY_MAPS[mapId];
   const sm=sky.material.uniforms; sm.top.value.set(pf.top); sm.bot.value.set(pf.bot);
-  scene.fog.color.set(pf.fog); scene.fog.near=pf.near; scene.fog.far=pf.far;
+  scene.fog.color.set(pf.fog); scene.fog.near=city?pf.near*2.5:pf.near; scene.fog.far=city?Math.max(200,pf.far*2.5):pf.far;
   hemi.intensity=pf.hemi; sun.intensity=pf.sun; sun.color.set(pf.sunC); scene.environment=ENVS[pf.env];
   renderer.toneMappingExposure=pf.exp; bloom.strength=pf.bloom;
-  const dark=key!=='day'; stars.visible=key==='night'||key==='stadeNight'; charLight.intensity=dark&&key!=='studio'?5:0; charLight.decay=1.6; charLight.distance=8;
-  lamps.forEach(l=>{ l.material.emissive.copy(dark?l.userData.glow:new THREE.Color(0)); l.material.emissiveIntensity=2.5; });
+  const dark=key!=='day'; stars.visible=key==='night'||key==='stadeNight'; charLight.intensity=['night','stadeNight','neon'].includes(key)?5:0; charLight.decay=1.6; charLight.distance=8;
+  const lampsOn=dark&&key!=='overcast'; lamps.forEach(l=>{ l.material.emissive.copy(lampsOn?l.userData.glow:new THREE.Color(0)); l.material.emissiveIntensity=2.5; });
+  const nightish=['night','stadeNight','neon'].includes(key); glowMats.forEach(m=>{ m.emissiveIntensity=nightish?m.userData.glow.night:(key==='sunset'?m.userData.glow.night*0.35:m.userData.glow.day); });
 }
 function setMap(id,silent){
   if(worldGroup){ scene.remove(worldGroup); disposeObj(worldGroup); }
-  colliders.length=0; lamps.length=0; ball=null; sea=null; stadeCrowd=null; emitters.length=0; flags=[];
+  colliders.length=0; lamps.length=0; glowMats.length=0; ball=null; sea=null; stadeCrowd=null; emitters.length=0; flags=[];
   mapId=id; worldGroup=new THREE.Group(); scene.add(worldGroup); MAPS[id].build(worldGroup); applyLighting();
   ctx.onMapChanged&&ctx.onMapChanged(id,silent);
 }
@@ -308,6 +313,8 @@ const PROFILES={
   day:{top:0x3d8fff,bot:0xd6ecff,fog:0xd6ecff,near:24,far:70,hemi:0.55,sun:2.6,sunC:0xfff1dc,env:'day',bloom:0.12,exp:1.0},
   night:{top:0x060a20,bot:0x18204a,fog:0x10162e,near:18,far:60,hemi:0.18,sun:0.35,sunC:0xb8c6ff,env:'night',bloom:0.75,exp:1.15},
   neon:{top:0x0a0418,bot:0x2a0f45,fog:0x190a2c,near:12,far:60,hemi:0.14,sun:0.3,sunC:0xa98bff,env:'neon',bloom:0.7,exp:1.1},
+  sunset:{top:0x3b2a7a,bot:0xff9a62,fog:0xf0a27a,near:30,far:90,hemi:0.55,sun:2.2,sunC:0xffa060,env:'day',bloom:0.35,exp:1.0},
+  overcast:{top:0x8e98a6,bot:0xd5dbe2,fog:0xc8cfd8,near:25,far:80,hemi:0.85,sun:1.1,sunC:0xf2f4f7,env:'day',bloom:0.1,exp:1.05},
   studio:{top:0x0b0614,bot:0x1c0f2e,fog:0x120a1f,near:14,far:40,hemi:0.15,sun:0,sunC:0xffffff,env:'studio',bloom:0.45,exp:0.95},
   stadeNight:{top:0x070a1c,bot:0x26305e,fog:0x141a33,near:30,far:90,hemi:0.3,sun:1.6,sunC:0xe6eeff,env:'stade',bloom:0.85,exp:1.1}
 };

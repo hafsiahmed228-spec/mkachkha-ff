@@ -70,7 +70,10 @@ export class Cast {
     this.tc.position.set(0, h * 0.55, h * 2.25); this.tc.lookAt(0, h * 0.5, 0); this.tr.render(this.ts, this.tc); e.thumb = this.tr.domElement.toDataURL('image/png');
     if (par) par.add(r); else this.ts.remove(r); r.position.copy(p); r.rotation.y = ry;
   }
-  setMode(m) { this.mode = m; this.duo = null; this.list.forEach((c, i) => { c.av.root.visible = m !== 'edit' || i === this.active; c.pose = m === 'edit' ? null : c.pose; c.hug = null; }); }
+  setMode(m) { this.mode = m; this.duo = null; this.list.forEach((c, i) => { c.av.root.visible = m === 'world' || i === this.active || (m === 'lobby' && this.lobbyIdx(i) >= 0); c.pose = m === 'edit' ? null : c.pose; c.hug = null; }); }
+  lobbyIdx(i) { const order = [this.active, ...this.list.map((_, j) => j).filter(j => j !== this.active)].slice(0, 3); return order.indexOf(i); }
+  arrangeLobby() { const slots = [[0, 0], [-1.05, -0.7], [1.05, -0.7]]; this.list.forEach((c, i) => { const k = this.lobbyIdx(i); c.av.root.visible = k >= 0; if (k < 0) return; c.pos.set(slots[k][0], 0, slots[k][1]); c.y = 0; c.vy = 0; c.yaw = c.targetYaw = 0; c.hug = null; c.look = true; this.place(c); });
+    const E = this.E, h = this.cur.av.height, n = Math.min(3, this.list.length); E.controls.target.set(0, h * 0.5, -0.2); E.camera.position.set(0, h * 0.6, E.fitDist(n > 1 ? 1.15 : 0.6, h * 0.56) * 1.02); }
   frameEditor() { const e = this.cur; if (!e) return; const h = e.av.height, E = this.E; const tgt = new THREE.Vector3(e.pos.x, h * 0.52, e.pos.z);
     const f = new THREE.Vector3(Math.sin(e.yaw), 0, Math.cos(e.yaw)); E.controls.target.copy(tgt); E.camera.position.copy(tgt).addScaledVector(f, E.fitDist(0.55, h * 0.58) * 1.05).add(new THREE.Vector3(0, 0.1, 0)); }
   frameWorld() { const e = this.cur; if (!e) return; const h = e.av.height, E = this.E; const back = new THREE.Vector3(Math.sin(e.yaw), 0, Math.cos(e.yaw));
@@ -137,7 +140,7 @@ export class Cast {
       av.root.updateMatrixWorld(true);
       if (!c.moving || c.moving < 0.08) applyPose(c, dt, t, E.camera); else av.ikState = null;
       const h = av.height;
-      if (c.tag) { c.tag.position.set(c.pos.x, c.y + h + 0.16, c.pos.z); c.tag.visible = this.showTags && this.mode !== 'edit' && av.root.visible; }
+      if (c.tag) { c.tag.position.set(c.pos.x, c.y + h + 0.16, c.pos.z); c.tag.visible = this.showTags && this.mode === 'world' && av.root.visible; }
       if (c.bubble) c.bubble.position.set(c.pos.x, c.y + h + (c.tag && c.tag.visible ? 0.5 : 0.36), c.pos.z);
     }
     this.ring.position.set(a.pos.x, 0.02, a.pos.z); this.ring.visible = this.mode === 'world' && this.list.length > 1;

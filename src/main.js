@@ -18,7 +18,11 @@ const ICON = {
 const CONTACT = [['💬 WhatsApp', 'https://wa.me/21698151297'], ['📘 Facebook', 'https://www.facebook.com/ahmedhfsi'], ['📸 Instagram', 'https://instagram.com/ahmed.hafsii']];
 const PAL = { top: ['#d62828', '#ffcc00', '#111111', '#f2f2f2', '#1d3557', '#2a9d8f', '#6c3fc4', '#ff6fa8'], skin: ['#ffe0c4', '#f1c27d', '#e0ac69', '#c68642', '#8d5524', '#5c3a1e'],
   hat: ['#c1121f', '#111111', '#ffcc00', '#1d3557', '#f2f2f2', '#2a9d8f'], mask: ['#111111', '#f2f2f2', '#d62828', '#ffcc00', '#1d3557', '#6c3fc4'] };
-const MAPLIST = [['studio', '📸', 'ستوديو'], ['neon', '🌃', 'مدينة نيون'], ['stade', '🏟️', 'الملعب'], ['sidi', '🏘️', 'سيدي بوسعيد'], ['plage', '🏖️', 'البحر'], ['souk', '🛍️', 'السوق']];
+const MAPLIST = [['paris', '🗼', 'باريس', 1], ['london', '🎡', 'لندن', 1], ['newyork', '🗽', 'نيويورك', 1], ['ibiza', '🏝️', 'إيبيزا', 1], ['tunis', '🕰️', 'تونس', 1], ['dubai', '🏙️', 'دبي', 1],
+  ['neon', '🌃', 'مدينة نيون'], ['stade', '🏟️', 'الملعب'], ['sidi', '🏘️', 'سيدي بوسعيد'], ['plage', '🏖️', 'البحر'], ['souk', '🛍️', 'السوق'], ['studio', '📸', 'ستوديو']];
+const MAPART = { paris: ['#1d2b5a', '#c94b6b'], london: ['#2c3440', '#8a1c2c'], newyork: ['#101a3a', '#d4a017'], ibiza: ['#ff7a59', '#5a2a8a'], tunis: ['#c1121f', '#f2c14e'], dubai: ['#c9862f', '#1d2b5a'],
+  neon: ['#2a0f45', '#ff2fa0'], stade: ['#0e3d1e', '#d62828'], sidi: ['#1d5fbf', '#f4f1ea'], plage: ['#1aa7c9', '#f0dcae'], souk: ['#7a3d12', '#e9b44c'], studio: ['#2a1450', '#ffb020'] };
+const FLAG = { paris: '🇫🇷', london: '🇬🇧', newyork: '🇺🇸', ibiza: '🇪🇸', tunis: '🇹🇳', dubai: '🇦🇪' };
 
 /* ---------- state ---------- */
 function newChar(body = 'ahmed', name = '') {
@@ -41,13 +45,15 @@ async function boot() {
     step(15, 'قاعد نحمّل الموديلات و الحركات…');
     let i = 0; for (const s of chars) { await cast.add(s); step(15 + (++i / chars.length) * 60); }
     cast.active = Math.max(0, chars.findIndex(c => c.id === activeId));
-    step(80, 'قاعد نبني الدنيا…'); E.worlds.night = LS.get('night', false); E.worlds.setMap(LS.get('map', 'studio'), true);
+    step(80, 'قاعد نبني الدنيا…'); E.worlds.night = LS.get('night', false); E.worlds.setMap('studio', true);
     step(92, 'آخر لمسات…'); await makeBodyThumbs();
   } catch (err) { console.error(err); txt.textContent = 'صار مشكل في التحميل 😕 ' + (err && err.message || ''); return; }
-  buildTabbar(); buildWorldHUD(); go('home');
+  buildWorldHUD(); go('home'); setInterval(lobbyTick, 6500);
   step(100); setTimeout(() => $('#splash').classList.add('out'), 250);
 }
-function onMapChanged(id) { LS.set('map', id); if (!cast) return; const z = E.worlds.MAPS[id].spawnZ; cast.spawnAll(z); if (screen === 'world') cast.frameWorld(); else if (screen === 'chars') cast.frameEditor(); }
+function onMapChanged(id) { if (!cast) return; const z = E.worlds.MAPS[id].spawnZ; cast.spawnAll(z); if (screen === 'world') cast.frameWorld(); else if (screen === 'chars') cast.frameEditor(); else if (screen === 'home') cast.arrangeLobby(); }
+const ensureMap = id => { if (E.worlds.mapId !== id) E.worlds.setMap(id, true); };
+const destMap = () => LS.get('map', 'paris');
 async function makeBodyThumbs() { for (const k of Object.keys(BODIES).concat(Object.keys(customBodies))) { if (bodyThumbs[k]) continue; try { const tmp = { state: newChar(k), av: await cast.makeAvatar(newChar(k)) }; cast.thumb(tmp); bodyThumbs[k] = tmp.thumb; cast.dispose(tmp.av); } catch (e) {} } }
 function registerCustom(m) { const key = 'custom:' + m.id; customBodies[key] = { url: URL.createObjectURL(m.blob), label: m.name, gender: 'm', custom: true, desc: m.desc || 'custom 3D character',
   tints: [{ id: 'all', label: 'الألوان', meshes: ['*'], soft: true }], toggles: [], acc: { r: 0.1, up: 0.09, fwd: 0.01, eyeUp: 0.075, eyeFwd: 0.09, eyeGap: 0.033 }, back: 0.12 }; return key; }
@@ -62,13 +68,18 @@ function buildTabbar() {
     const b = h('button', { 'data-s': id, class: mid ? 'mid' : '', onclick: () => go(id) }); b.innerHTML = mid ? `<div class="bub">${ic}</div><span>${lb}</span>` : `${ic}<span>${lb}</span>`; tb.append(b); });
 }
 function go(s) {
-  screen = s; $('#app').dataset.screen = s; $$('#tabbar button').forEach(b => b.classList.toggle('on', b.dataset.s === s)); closeLayer();
-  const live = s === 'chars' || s === 'world'; E.setRunning(live);
-  if (s === 'chars') { cast.setMode('edit'); requestAnimationFrame(() => { E.resize(); cast.frameEditor(); }); renderChars(); }
-  if (s === 'world') { cast.setMode('world'); requestAnimationFrame(() => { E.resize(); cast.frameWorld(); }); updateRoster(); }
-  if (s === 'home') renderHome(); if (s === 'studio') renderStudio(); if (s === 'gallery') renderGallery();
+  screen = s; $('#app').dataset.screen = s; closeLayer(); $('#app').classList.remove('hidehud');
+  const live = s === 'home' || s === 'chars' || s === 'world'; E.setRunning(live);
+  if (s === 'home') { ensureMap('studio'); cast.setMode('lobby'); cast.arrangeLobby(); lobbyTick(true); requestAnimationFrame(() => { E.resize(); cast.arrangeLobby(); }); renderLobby(); }
+  if (s === 'chars') { ensureMap('studio'); cast.list.forEach(c => c.pose = null); cast.setMode('edit'); cast.spawnAll(0); requestAnimationFrame(() => { E.resize(); cast.frameEditor(); }); renderChars(); }
+  if (s === 'world') { const d = destMap(); const enter = () => { cast.list.forEach(c => c.pose = null); cast.setMode('world'); requestAnimationFrame(() => { E.resize(); cast.frameWorld(); }); updateRoster(); };
+    if (E.worlds.mapId !== d) loading(d, () => { E.worlds.setMap(d, true); enter(); }); else enter(); }
+  if (s === 'studio') renderStudio(); if (s === 'gallery') renderGallery();
 }
-function setActive(id) { activeId = id; saveChars(); cast.active = Math.max(0, cast.list.findIndex(e => e.state.id === id)); if (screen === 'chars') { cast.setMode('edit'); cast.frameEditor(); renderChars(); } if (screen === 'world') { cast.duo = null; updateRoster(); } }
+function loading(id, fn) { const m = MAPLIST.find(x => x[0] === id) || ['', '🌍', '']; const a = MAPART[id] || ['#222', '#555'];
+  const ov = h('div', { class: 'loader', style: `background:linear-gradient(160deg,${a[0]},${a[1]})` }, h('div', { class: 'em' }, m[1]), h('div', { class: 'logo big' }, 'MKACHKHA', h('b', {}, 'FF')), h('h2', {}, (FLAG[id] || '') + ' ' + m[2]), h('div', { class: 'bar' }, h('i')), h('small', {}, ['💡 اضغط 👯 باش تعمل لقطة مع صحابك', '💡 🎬 يبدّل الكادر متاع التصويرة', '💡 ✨ ستوديو IA يرد التصويرة واقعية', '💡 🌙 ردّ الدنيا ليل'][Math.floor(Math.random() * 4)]));
+  $('#app').append(ov); requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(() => { try { fn(); } finally { ov.classList.add('out'); setTimeout(() => ov.remove(), 450); } }, 60))); }
+function setActive(id) { activeId = id; saveChars(); cast.active = Math.max(0, cast.list.findIndex(e => e.state.id === id)); if (screen === 'home') { cast.arrangeLobby(); } if (screen === 'chars') { cast.setMode('edit'); cast.frameEditor(); renderChars(); } if (screen === 'world') { cast.duo = null; updateRoster(); } }
 
 /* ---------- layer (sheets) ---------- */
 function closeLayer() { $('#layer').innerHTML = ''; }
@@ -77,34 +88,29 @@ function sheet(title, content, light) {
   const sh = h('div', { class: 'sheet' }, h('div', { class: 'grab' }), title ? h('h3', {}, title) : null, content); L.append(bd, sh); return sh;
 }
 
-/* ---------- HOME ---------- */
-async function renderHome() {
-  const S = $('#s-home'); const st = curState(), e = entryOf(st);
-  const recent = (await media.all()).slice(0, 6);
+/* ---------- LOBBY (home) ---------- */
+const LOBBY_POSES = ['crossed', 'hips', 'peace', null, 'thumbs', 'shh', 'flex', 'salute'];
+function lobbyTick(force) { if (screen !== 'home' || !cast) return; cast.list.forEach((c, i) => { if (!c.av.root.visible) return; if (force || Math.random() < 0.7) c.pose = LOBBY_POSES[Math.floor(Math.random() * LOBBY_POSES.length)]; }); }
+async function renderLobby() {
+  const S = $('#s-home'); const st = curState(); const n = (await media.all()).length; const lv = 1 + Math.floor(n / 5), xp = (n % 5) / 5;
+  const d = destMap(), dm = MAPLIST.find(x => x[0] === d) || MAPLIST[0], art = MAPART[d] || ['#333', '#555'];
   S.innerHTML = '';
-  S.append(h('div', { class: 'topbar' }, h('div', { class: 'logo' }, 'MKACHKHA', h('b', {}, 'FF')), h('button', { class: 'icon-btn', html: ICON.gear, onclick: openSettings })));
-  const pad = h('div', { class: 'pad' });
-  pad.append(h('div', { class: 'hero' }, h('img', { src: e?.thumb || '', alt: '' }), h('div', { class: 'info' }, h('span', { class: 'tag' }, '⭐ شخصيتك'), h('h2', {}, st.name || bodyDef(st.body).label),
-    h('div', { class: 'muted' }, bodyDef(st.body).label + ' · ' + (st.acc.mask !== 'none' ? 'ماسك' : 'بلاش ماسك')),
-    h('div', { class: 'row', style: 'margin-top:8px' }, h('button', { class: 'btn', onclick: () => go('world') }, '▶ العب'), h('button', { class: 'btn ghost', onclick: () => go('chars') }, '✏️ بدّل')))));
-  pad.append(h('div', { class: 'h2' }, 'ابدا من هنا'));
-  const tiles = [['a', '👤', 'اصنع شخصية', 'بدن، لبسة، ماسك، نومرو', () => { addCharacter(); }], ['b', '🌍', 'ادخل للعالم', '6 بلايص، كورة، موتور', () => go('world')], ['c', '✨', 'تصويرة IA', 'واقعية كيف الألعاب', () => go('studio')], ['d', '🖼️', 'تصاوري', 'التصاور و الفيديوات', () => go('gallery')]];
-  pad.append(h('div', { class: 'grid2' }, tiles.map(([c, ic, b, sp, fn]) => h('button', { class: 'tile ' + c, onclick: fn }, h('div', { class: 'ic' }, ic), h('b', {}, b), h('span', {}, sp)))));
-  pad.append(h('div', { class: 'h2' }, 'شخصياتي', h('small', { onclick: () => go('chars') }, 'الكل ←')));
-  const sc = h('div', { class: 'scroller' });
-  chars.forEach(c => { const en = entryOf(c); sc.append(h('div', { class: 'av' + (c.id === activeId ? ' on' : ''), onclick: () => { setActive(c.id); renderHome(); } }, h('div', { class: 'ph' }, en?.thumbHead ? h('img', { src: en.thumbHead }) : '👤'), h('small', {}, c.name || bodyDef(c.body).label))); });
-  sc.append(h('div', { class: 'av add', onclick: addCharacter }, h('div', { class: 'ph' }, '+'), h('small', {}, 'جديدة')));
-  pad.append(sc);
-  pad.append(h('div', { class: 'h2' }, 'آخر التصاور', h('small', { onclick: () => go('gallery') }, 'المعرض ←')));
-  if (!recent.length) pad.append(h('div', { class: 'card empty' }, 'مازلت ما صوّرت شي. ادخل للعالم و اضغط 📸'));
-  else pad.append(h('div', { class: 'mgrid' }, recent.map(m => mediaThumb(m))));
-  pad.append(h('div', { class: 'h2' }, 'تواصل معانا'));
-  pad.append(h('div', { class: 'contact' }, CONTACT.map(([l, u]) => h('a', { href: u, target: '_blank', onclick: ev => { ev.preventDefault(); openLink(u); } }, l))));
-  pad.append(h('p', { class: 'muted', style: 'text-align:center;margin-top:18px' }, 'MKACHKHA FF · v2.0'));
-  S.append(pad);
+  S.append(h('div', { class: 'lb-top' },
+    h('div', { class: 'prof glass', onclick: () => go('chars') }, h('div', { class: 'pic' }, entryOf(st)?.thumbHead ? h('img', { src: entryOf(st).thumbHead }) : '👤'),
+      h('div', {}, h('b', {}, st.name || bodyDef(st.body).label), h('div', { class: 'lv' }, h('span', {}, 'LV ' + lv), h('div', { class: 'xp' }, h('i', { style: `width:${Math.max(6, xp * 100)}%` }))))),
+    h('div', { class: 'row' }, h('div', { class: 'cur glass' }, '📸 ', String(n)), h('button', { class: 'icon-btn glass', html: ICON.gear, onclick: openSettings }))));
+  S.append(h('div', { class: 'logo lb-logo' }, 'MKACHKHA', h('b', {}, 'FF')));
+  const menu = [['👤', 'الشخصيات', () => go('chars')], ['🤖', 'IA تصنع', () => openAICmd()], ['✨', 'ستوديو IA', () => go('studio')], ['🖼️', 'تصاوري', () => go('gallery')], ['📞', 'تواصل', openContact]];
+  S.append(h('div', { class: 'lb-menu' }, menu.map(([ic, lb, fn]) => h('button', { class: 'lbm glass', onclick: fn }, h('span', {}, ic), h('small', {}, lb)))));
+  S.append(h('div', { class: 'lb-switch' }, h('button', { class: 'icon-btn glass', onclick: () => cycleChar(1) }, '›'), h('div', { class: 'nm' }, st.name || bodyDef(st.body).label), h('button', { class: 'icon-btn glass', onclick: () => cycleChar(-1) }, '‹')));
+  S.append(h('div', { class: 'lb-bottom' },
+    h('button', { class: 'mapcard', style: `background:linear-gradient(135deg,${art[0]},${art[1]})`, onclick: () => openMaps() }, h('span', { class: 'em' }, dm[1]), h('div', {}, h('small', {}, 'الماب'), h('b', {}, (FLAG[d] || '') + ' ' + dm[2])), h('i', {}, 'بدّل')),
+    h('button', { class: 'start', onclick: () => go('world') }, h('span', {}, 'ابدا'), h('small', {}, 'START'))));
 }
+function cycleChar(dir) { const i = chars.findIndex(c => c.id === activeId); const n = chars[(i + dir + chars.length) % chars.length]; setActive(n.id); cast.setMode('lobby'); cast.arrangeLobby(); lobbyTick(true); renderLobby(); }
+function openContact() { sheet('📞 تواصل معانا', h('div', { class: 'contact' }, CONTACT.map(([l, u]) => h('a', { href: u, onclick: ev => { ev.preventDefault(); openLink(u); } }, l)))); }
 async function addCharacter() {
-  const s = newChar('ahmed', ''); chars.push(s); saveChars(); toast('قاعد نزيد الشخصية…'); await cast.add(s); setActive(s.id); go('chars'); seg = 'body'; renderChars();
+  const s = newChar('ahmed', ''); chars.push(s); saveChars(); toast('قاعد نزيد الشخصية…'); await cast.add(s); seg = 'body'; setActive(s.id); go('chars');
 }
 
 /* ---------- CHARACTERS (editor) ---------- */
@@ -113,6 +119,7 @@ function changed(full) { saveChars(); clearTimeout(rebuildT); rebuildT = setTime
 function renderChars() {
   const S = $('#s-chars'); const st = curState(); S.innerHTML = '';
   const tools = h('div', { class: 'ed-tools' },
+    h('button', { class: 'icon-btn', title: 'رجوع', html: ICON.back, onclick: () => go('home') }),
     h('button', { class: 'icon-btn', title: 'دوّر', onclick: () => { const e = entryOf(st); e.yaw += Math.PI; e.targetYaw = e.yaw; } }, '🔄'),
     h('button', { class: 'icon-btn', title: 'الوجه', onclick: () => { cast.duo = null; cast.frame('close'); } }, '🔍'),
     h('button', { class: 'icon-btn', title: 'كامل', onclick: () => cast.frameEditor() }, '🧍'));
@@ -123,7 +130,7 @@ function renderChars() {
   sheetEl.append(h('div', { class: 'ed-head' }, name,
     h('button', { class: 'icon-btn', title: 'العب', onclick: () => go('world') }, '▶'),
     h('button', { class: 'icon-btn', title: 'فسخ', onclick: () => delCharacter(st) }, '🗑️')));
-  const segs = [['body', '🧍 البدن'], ['colors', '🎨 الألوان'], ['acc', '🎩 زيادات'], ['shirt', '👕 المريول'], ['ai', '✨ وصف IA'], ['voice', '🗣️ الصوت']];
+  const segs = [['cmd', '🤖 IA'], ['body', '🧍 البدن'], ['colors', '🎨 الألوان'], ['acc', '🎩 زيادات'], ['shirt', '👕 المريول'], ['ai', '✨ وصف IA'], ['voice', '🗣️ الصوت']];
   sheetEl.append(h('div', { class: 'segs' }, segs.map(([id, lb]) => h('button', { class: 'seg' + (seg === id ? ' on' : ''), onclick: () => { seg = id; renderChars(); } }, lb))));
   const body = h('div', { class: 'ed-body' }); sheetEl.append(body); S.append(sheetEl);
   updateEdRoster();
@@ -141,6 +148,7 @@ function renderChars() {
     body.append(rangeRow('الطول', 'قصير', 'طويل', st.height, 0.86, 1.12, v => { st.height = v; changed(); }));
     body.append(rangeRow('العرض', 'ضعيف', 'عريض', st.width, 0.88, 1.3, v => { st.width = v; changed(); }));
   }
+  if (seg === 'cmd') body.append(aiCmdBox(st));
   if (seg === 'colors') {
     if (!def.tints.length && !(def.toggles || []).length) body.append(h('div', { class: 'empty' }, 'الشخصية هذي ما فيهاش ألوان تتبدّل.'));
     for (const t of def.tints) body.append(h('label', { class: 'lbl' }, t.label), swatches(t.id === 'skin' ? PAL.skin : PAL.top, st.tints[t.id] || null, c => { if (c) st.tints[t.id] = c; else delete st.tints[t.id]; changed(); }, true));
@@ -206,6 +214,51 @@ function refsBox(arr, onChange) {
 }
 function shrinkImage(file, max) { return new Promise(ok => { const img = new Image(); img.onload = () => { const k = Math.min(1, max / Math.max(img.width, img.height)); const c = document.createElement('canvas'); c.width = img.width * k; c.height = img.height * k; c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); ok(c.toDataURL('image/jpeg', 0.85)); }; img.src = URL.createObjectURL(file); }); }
 
+
+/* ---------- AI character control ---------- */
+function aiSchema() {
+  const bodies = Object.keys(BODIES).concat(Object.keys(customBodies)).map(k => { const d = bodyDef(k); return `- ${k}: "${d.label}" (${d.desc || 'custom'}); tints=[${d.tints.map(t => t.id).join(',')}]; toggles=[${(d.toggles || []).map(t => t.id).join(',')}]`; }).join('\n');
+  return `Available bodies:\n${bodies}\nEditable fields: name (string), body (one key above), height 0.86-1.12, width 0.88-1.3, tints {tintId:"#rrggbb"} (only tint ids of the chosen body), toggles {id:true|false}, acc {hat:"none"|"chechia"|"cap"|"beanie", hatColor:"#rrggbb", mask:"none"|"cloth", maskColor:"#rrggbb", glasses:"none"|"round"|"square"|"sun"}, showBack (bool, shows number+name on the back), number 0-99, backName (<=12 chars), backColor "#rrggbb", voice {pitch 0.5-1.6, rate 0.7-1.4}, aiDesc (rich ENGLISH appearance description used for realistic AI photos: hair style and color, face, skin tone, beard, outfit, shoes, accessories, vibe - include everything the 3D model cannot show).`;
+}
+function sanitizePatch(st, p) {
+  const o = {}, num = (v, a, b) => { v = parseFloat(v); return isNaN(v) ? undefined : Math.max(a, Math.min(b, v)); }, hex = v => typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v) ? v : undefined;
+  if (typeof p.name === 'string') o.name = p.name.slice(0, 24);
+  if (p.body && (BODIES[p.body] || customBodies[p.body])) o.body = p.body;
+  if (p.height != null) o.height = num(p.height, 0.86, 1.12); if (p.width != null) o.width = num(p.width, 0.88, 1.3);
+  const d = bodyDef(o.body || st.body);
+  if (p.tints && typeof p.tints === 'object') { o.tints = {}; for (const t of d.tints) { const c = hex(p.tints[t.id]); if (c) o.tints[t.id] = c; } }
+  if (p.toggles && typeof p.toggles === 'object') { o.toggles = {}; for (const t of d.toggles || []) if (typeof p.toggles[t.id] === 'boolean') o.toggles[t.id] = p.toggles[t.id]; }
+  if (p.acc && typeof p.acc === 'object') { const a = p.acc; o.acc = { ...st.acc };
+    if (['none', 'chechia', 'cap', 'beanie'].includes(a.hat)) o.acc.hat = a.hat; if (hex(a.hatColor)) o.acc.hatColor = a.hatColor;
+    if (['none', 'cloth'].includes(a.mask)) o.acc.mask = a.mask; if (hex(a.maskColor)) o.acc.maskColor = a.maskColor;
+    if (['none', 'round', 'square', 'sun'].includes(a.glasses)) o.acc.glasses = a.glasses; }
+  if (typeof p.showBack === 'boolean') o.showBack = p.showBack; if (p.number != null && !isNaN(parseInt(p.number))) o.number = Math.max(0, Math.min(99, parseInt(p.number)));
+  if (typeof p.backName === 'string') o.backName = p.backName.slice(0, 12); if (hex(p.backColor)) o.backColor = p.backColor;
+  if (p.voice && typeof p.voice === 'object') { o.voice = { ...st.voice }; if (p.voice.pitch != null) o.voice.pitch = num(p.voice.pitch, 0.5, 1.6) ?? st.voice.pitch; if (p.voice.rate != null) o.voice.rate = num(p.voice.rate, 0.7, 1.4) ?? st.voice.rate; }
+  if (typeof p.aiDesc === 'string') o.aiDesc = p.aiDesc.slice(0, 900);
+  for (const k of Object.keys(o)) if (o[k] === undefined) delete o[k]; return o;
+}
+async function runAICmd(st, text, asNew) {
+  const cur = { ...st }; delete cur.refs; delete cur.id;
+  const res = await aiJSON(`You control the character editor of a 3D mobile game.\n${asNew ? 'Create a NEW character from the user description.' : 'Current character JSON: ' + JSON.stringify(cur)}\n${aiSchema()}\nUser request (may be Tunisian Darija, Arabic, French or English): "${text}"\nReturn JSON {"patch":{...only fields to set...},"message":"one short friendly sentence in Tunisian Darija (Arabic script) saying what you did"}. Pick the body that best matches. Always include a rich aiDesc that matches the request.`);
+  const patch = sanitizePatch(st, res.patch || {});
+  if (asNew) { const s = newChar(patch.body || 'ahmed', patch.name || ''); Object.assign(s, patch); chars.push(s); saveChars(); await cast.add(s); setActive(s.id); }
+  else { if (patch.body && patch.body !== st.body) { st.tints = {}; st.toggles = {}; } if (patch.tints && !(patch.body && patch.body !== st.body)) patch.tints = { ...st.tints, ...patch.tints }; if (patch.toggles) patch.toggles = { ...st.toggles, ...patch.toggles };
+    Object.assign(st, patch); saveChars(); const e = entryOf(st); if (e) await cast.rebuild(e); }
+  return res.message || 'تمّ ✅';
+}
+function aiCmdBox(st) {
+  const ta = h('textarea', { class: 'inp', placeholder: 'قلّي شنوّة تحب… مثال: «ردّو لابس ماسك أسود و شاشية حمراء، طويل شوية، و حطّ النومرو 7 و اسمو HAMMA على ضهرو»' });
+  const msg = h('p', { class: 'muted', style: 'min-height:20px' });
+  const ex = ['ردّو كيف بطل لعبة: ماسك أسود و نظارات شمس', 'بنت ستايل ستريت، ألوان وردي و أبيض', 'لابس مريول الترجي أحمر و أصفر نومرو 10', 'روبو ذهبي و أسود', 'زيدو سمّنو شوية و قصّرو'];
+  const run = async (asNew, btn) => { if (!ta.value.trim()) return toast('اكتب شنوّة تحب'); const t = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<span class="spin"></span>';
+    try { msg.textContent = '🤖 ' + await runAICmd(st, ta.value.trim(), asNew); if (screen === 'chars') renderChars(); if (screen === 'home') renderLobby(); } catch (e) { msg.textContent = aiErr(e); } btn.disabled = false; btn.innerHTML = t; };
+  const b1 = h('button', { class: 'btn', onclick: () => run(false, b1) }, '✨ طبّق على هذي'), b2 = h('button', { class: 'btn ghost', onclick: () => run(true, b2) }, '➕ شخصية جديدة');
+  return h('div', {}, h('p', { class: 'muted' }, 'الـ IA تتحكّم في كل تفصيلة: البدن، الطول، الألوان، الماسك، الشاشية، النومرو، الصوت، و تكتب وصف كامل للتصاور الواقعية.'), ta,
+    h('div', { class: 'chips', style: 'margin:8px 0' }, ex.map(x => h('button', { class: 'chip', onclick: () => ta.value = x }, x))), h('div', { class: 'grid2' }, b1, b2), msg);
+}
+function openAICmd() { sheet('🤖 الـ IA تصنعلك الشخصية', aiCmdBox(curState())); }
+
 /* ---------- WORLD ---------- */
 const FRAMES = [['full', 'كامل'], ['medium', 'نصّ'], ['close', 'قريب'], ['hero', 'من لوطا']]; let frameIdx = 0;
 function buildWorldHUD() {
@@ -243,8 +296,17 @@ function openAddFriend() {
     const a = cast.cur; const right = new THREE.Vector3(Math.cos(a.yaw), 0, -Math.sin(a.yaw)); const e = await cast.add(s, a.pos.clone().addScaledVector(right, (cast.list.length % 2 ? 1 : -1) * 0.8 * Math.ceil(cast.list.length / 2))); e.yaw = e.targetYaw = a.yaw; updateRoster(); toast('جا صاحبك 👋'); } }, h('img', { src: bodyThumbs[k] || '' }), h('b', {}, bodyDef(k).label)));
   box.append(grid); sheet('👥 زيد صاحبك', box);
 }
-function openMaps() { const g = h('div', { class: 'maps' }); MAPLIST.forEach(([id, em, lb]) => g.append(h('button', { class: 'mapc' + (E.worlds.mapId === id ? ' on' : ''), onclick: () => { closeLayer(); E.worlds.setMap(id); toast(em + ' ' + lb); } }, h('div', {}, em), h('small', {}, lb))));
-  sheet('🗺️ وين تحب تمشي؟', h('div', {}, g, h('div', { class: 'toggle', style: 'margin-top:10px' }, h('b', {}, '🌙 الليل'), h('button', { class: 'switch' + (E.worlds.night ? ' on' : ''), onclick: ev => { E.worlds.night = !E.worlds.night; LS.set('night', E.worlds.night); ev.target.classList.toggle('on'); } })))); }
+function openMaps() {
+  const box = h('div', {}); const cur = screen === 'world' ? E.worlds.mapId : destMap();
+  const card = ([id, em, lb, city]) => { const a = MAPART[id] || ['#333', '#555'];
+    return h('button', { class: 'mapc2' + (cur === id ? ' on' : ''), style: `background:linear-gradient(150deg,${a[0]},${a[1]})`, onclick: () => { LS.set('map', id); closeLayer();
+      if (screen === 'world') loading(id, () => { E.worlds.setMap(id, true); cast.setMode('world'); cast.frameWorld(); }); else renderLobby(); } },
+      h('span', { class: 'em' }, em), h('b', {}, lb), h('small', {}, city ? (FLAG[id] + ' مدينة') : '🎮 بلاصة')); };
+  box.append(h('div', { class: 'h2' }, '🌍 مدن العالم'), h('div', { class: 'maps2' }, MAPLIST.filter(m => m[3]).map(card)));
+  box.append(h('div', { class: 'h2' }, '🎮 بلايص اللعبة'), h('div', { class: 'maps2' }, MAPLIST.filter(m => !m[3]).map(card)));
+  box.append(h('div', { class: 'toggle', style: 'margin-top:10px' }, h('b', {}, '🌙 الليل'), h('button', { class: 'switch' + (E.worlds.night ? ' on' : ''), onclick: ev => { E.worlds.night = !E.worlds.night; LS.set('night', E.worlds.night); ev.target.classList.toggle('on'); } })));
+  sheet('🗺️ اختار الماب', box);
+}
 function openPoses() {
   const e = cast.cur; let all = false; const g = h('div', { class: 'pgrid' });
   POSES.forEach(([id, em, lb]) => g.append(h('button', { class: 'pc' + ((e.pose || 'idle') === id ? ' on' : ''), onclick: ev => { (all ? cast.list : [e]).forEach(c => { c.pose = id === 'idle' ? null : id; c.hug = null; }); $$('.pc', g).forEach(x => x.classList.remove('on')); ev.currentTarget.classList.add('on'); } }, h('span', {}, em), h('small', {}, lb))));
@@ -312,7 +374,13 @@ function describeChar(s) {
 }
 
 /* ---------- STUDIO (AI photos) ---------- */
-const PLACES = [['studio', '📸 لوبي', 'premium game lobby studio, dark purple backdrop with bokeh lights, glowing golden circular platform, dramatic rim lights'],
+const PLACES = [['paris', '🗼 باريس', 'Paris, France: elegant street with Haussmann buildings, cafe terrace, the Eiffel Tower in the background'],
+  ['london', '🎡 لندن', 'London, UK: street near Big Ben and Westminster, red double-decker bus, red phone booth, soft overcast light'],
+  ['newyork', '🗽 نيويورك', 'Times Square, New York at night: giant glowing billboards, yellow taxis, skyscrapers'],
+  ['ibiza', '🏝️ إيبيزا', 'Ibiza beach club at sunset: infinity pool, white villa, palm trees, DJ booth, party lights, turquoise sea'],
+  ['tunis', '🕰️ تونس', 'Avenue Habib Bourguiba in Tunis: the clock tower, the cathedral, ficus trees, colonial white buildings with blue shutters, Tunisian flags'],
+  ['dubai', '🏙️ دبي', 'Dubai downtown at golden hour: Burj Khalifa, luxury supercars, fountain lake, palm trees'],
+  ['studio', '📸 لوبي', 'premium game lobby studio, dark purple backdrop with bokeh lights, glowing golden circular platform, dramatic rim lights'],
   ['neon', '🌃 نيون', 'futuristic neon city street at night, wet reflective asphalt, pink and cyan neon signs with Arabic and Latin letters, a sports motorbike with neon underglow, falling sparks'],
   ['stade', '🏟️ ملعب', 'packed football stadium at night in Tunisia, crowd in red and yellow waving flags, red flares and smoke, bright floodlights, live broadcast feel'],
   ['sidi', '🏘️ سيدي بوسعيد', 'Sidi Bou Said in Tunisia, white houses with blue doors and windows, bougainvillea, sunny Mediterranean light'],
@@ -321,12 +389,12 @@ const STYLES = [['game', '🎮 لعبة', 'high-end battle royale mobile game ch
   ['photo', '📷 واقعي', 'ultra realistic photograph, 50mm lens, natural skin texture, cinematic lighting, high detail'],
   ['cine', '🎬 سينما', 'cinematic movie still, anamorphic lens, film grain, moody color grading'], ['poster', '🔥 بوستر', 'epic promotional poster, bold composition, particles, glow and smoke']];
 const ASPECTS = [['9:16', 'ستوري 9:16'], ['1:1', 'مربّع'], ['16:9', 'عريض 16:9'], ['3:4', '3:4']];
-let studio = LS.get('studio', { picks: [], place: 'studio', custom: '', style: 'game', aspect: '9:16', scene: '', use3d: true, last: null });
+let studio = LS.get('studio', { picks: [], place: 'paris', custom: '', style: 'game', aspect: '9:16', scene: '', use3d: true, last: null });
 const saveStudio = () => LS.set('studio', { ...studio, last: null });
 function renderStudio() {
   const S = $('#s-studio'); S.innerHTML = ''; const pad = h('div', { class: 'pad' });
   if (!studio.picks.length || !studio.picks.every(id => chars.find(c => c.id === id))) studio.picks = [activeId];
-  pad.append(h('div', { class: 'between', style: 'margin-bottom:10px' }, h('div', { class: 'logo' }, 'MKACHKHA', h('b', {}, 'FF')), h('button', { class: 'icon-btn', html: ICON.gear, onclick: openSettings })));
+  pad.append(h('div', { class: 'between', style: 'margin-bottom:10px' }, h('button', { class: 'icon-btn', html: ICON.back, onclick: () => go('home') }), h('div', { class: 'logo' }, 'MKACHKHA', h('b', {}, 'FF')), h('button', { class: 'icon-btn', html: ICON.gear, onclick: openSettings })));
   pad.append(h('div', { class: 'st-hero' }, h('h2', {}, '✨ ستوديو التصاور الواقعية'), h('div', { class: 'muted' }, 'اختار الشخصيات و البلاصة و الستيل، و الـ IA (Gemini) تعملك تصويرة كيف الألعاب و الأفيشات.')));
   if (!geminiKey()) pad.append(h('div', { class: 'card', style: 'margin-top:12px;border-color:#ffc83d55' }, h('b', {}, '🔑 لازمك مفتاح Gemini'), h('p', { class: 'muted' }, 'خوذو بلاش من aistudio.google.com/apikey و حطّو في الإعدادات. (تصاور Gemini تنجم تطلب تفعيل الـ billing.)'), h('button', { class: 'btn', onclick: openSettings }, 'حطّ المفتاح')));
   pad.append(h('div', { class: 'h2' }, '1. شكون في التصويرة؟', h('small', {}, 'حتى 4')));
@@ -383,7 +451,7 @@ function showResult(out, m) {
 let galFilter = 'all';
 async function renderGallery() {
   const S = $('#s-gallery'); S.innerHTML = ''; const pad = h('div', { class: 'pad' });
-  pad.append(h('div', { class: 'between' }, h('h1', { class: 'h1' }, '🖼️ تصاوري'), h('button', { class: 'icon-btn', html: ICON.gear, onclick: openSettings })));
+  pad.append(h('div', { class: 'between' }, h('button', { class: 'icon-btn', html: ICON.back, onclick: () => go('home') }), h('h1', { class: 'h1' }, '🖼️ تصاوري'), h('button', { class: 'icon-btn', html: ICON.gear, onclick: openSettings })));
   pad.append(h('div', { style: 'height:10px' }), chipRow([['all', 'الكل'], ['photo', '📸 تصاور'], ['ai', '✨ IA'], ['video', '🎥 فيديو']], galFilter, v => { galFilter = v; renderGallery(); }));
   const all = (await media.all()).filter(m => galFilter === 'all' || m.type === galFilter);
   pad.append(h('div', { style: 'height:12px' }));
@@ -399,7 +467,7 @@ function viewMedia(m) {
   const el = m.type === 'video' ? h('video', { src, controls: true, autoplay: true, loop: true, playsinline: true }) : h('img', { src });
   L.append(h('div', { class: 'viewer' }, el, h('div', { class: 'row' }, h('button', { class: 'btn', onclick: () => saveMedia(m) }, '⬇️ سجّل'), h('button', { class: 'btn ghost', onclick: () => saveMedia(m, true) }, '📤')),
     h('div', { class: 'row' }, m.type !== 'video' ? h('button', { class: 'btn ghost', onclick: () => { studio.last = m; go('studio'); } }, '✨ عدّلها بالـ IA') : null,
-      h('button', { class: 'btn ghost', onclick: async () => { await media.del(m.id); closeLayer(); toast('تفسخت'); if (screen === 'gallery') renderGallery(); if (screen === 'home') renderHome(); } }, '🗑️'),
+      h('button', { class: 'btn ghost', onclick: async () => { await media.del(m.id); closeLayer(); toast('تفسخت'); if (screen === 'gallery') renderGallery(); if (screen === 'home') renderLobby(); } }, '🗑️'),
       h('button', { class: 'btn ghost', onclick: closeLayer }, 'رجوع'))));
 }
 async function saveMedia(m, share) { const blob = m.type === 'video' ? m.blob : await dataURLtoBlob(m.src); const ext = m.type === 'video' ? m.ext : (m.src.startsWith('data:image/png') ? 'png' : 'jpg'); await saveBlob(blob, `mkachkha_ff_${stamp()}.${ext}`, share); }
